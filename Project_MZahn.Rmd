@@ -1,0 +1,150 @@
+---
+title: "Coursera8_project"
+author: "Matthias Zahn"
+date: "23 January 2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+Set options:
+```{r setoptions, echo=TRUE}
+#opts_chunk$set(echo = TRUE )
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+
+# Read the data and perform exploratory analysis
+
+I start off by reading the data and quickly inspecting the data:
+```{r readdata}
+data <- read.csv(file = "pml-training.csv")
+#summary(data)
+# check number of NA per coloumn
+na_count <-sapply(data, function(y) sum(length(which(is.na(y)))))
+```
+
+## Delete coloumns containing missing values only
+
+It turns out that there are many coloumns with NA values only. Those have no 
+infomational value and are deleted in the next step: 
+
+```{r deleteNAcoloumns}
+tmp=0
+for(i in 1:ncol(data)){
+#        cat(i)
+        if(  sum(is.na(data[,i])) > 500 ){
+#                print(sum(is.na(data[,i])))
+                tmp = c(tmp, i)
+        }else{
+                
+        }      
+}
+
+data <- data[,-tmp] 
+remove(tmp)
+```
+
+This leaves 92 variables, which are still too many to build a model with on my computer.
+Hence I plot distributions per classe using the following code:
+
+# This plots density ditributions by classe for all variables into .jpg in the jpgs directory
+```{r plotexamples}
+library(ggplot2)
+#varnames <- names(data[,1:92])
+#for(i in 1:length(varnames)){
+#        cat(" plottting " , varnames[i] ," \n ")
+#        plotname <- paste("jpgs/Testplot_",varnames[i],".jpg", sep="") 
+#        # switch between different geoms
+#        q <-qplot(classe, training[,i], colour=classe, data=data, geom ="jitter") +
+#        ggtitle(varnames[i]) + 
+#        xlab( varnames[i])
+#        ggsave(filename=plotname, plot=q) 
+#}
+qplot(pitch_forearm, colour=classe, data=data, geom ="density") +
+        ggtitle("pitch_forearm") + 
+        xlab("pitch_forearm")
+qplot(classe, pitch_forearm, colour=classe, data=data, geom ="jitter") +
+        ggtitle("pitch_forearm") + 
+        xlab("pitch_forearm")
+```
+
+This plots density distributions by classe for all variables into .jpg files in 
+the jpgs directory. For the sake of brevity, the code is commented out and only 
+one example file is included.
+
+# Build the model and select the most important variables
+
+The most promising variables to predict classe are then selected manually bye
+eye inspection of all the jpg files. Any variables for which any of the 
+distribution differ are select for building the model. These are stored in an 
+array, that is used to subset the original data to 20 coloumns.
+
+
+```{r selectVariables}
+vars_used <- c("classe","pitch_forearm","magnet_belt_y","magnet_arm_x","magnet_arm_y","accel_arm_x","roll_dumbbell","accel_forearm_x","pitch_dumbbell")
+datsub <- subset(data, select=vars_used)
+```
+
+The subsetted data are then split into a training and a test set using functions from the caret package:
+```{r splitTrainAndTestSet}
+library(caret)
+inTrain <- createDataPartition(y=datsub$classe, p =0.7, list= FALSE)
+training <- datsub[inTrain,]; testing <- datsub[-inTrain,]
+```
+
+Four model are built using quadratic and linear discriminant functions, naive bayesmodel and a random forest model:
+
+```{r buildModels, echo=FALSE, message=FALSE, warning=FALSE}
+modqda <- train(classe ~ ., data=training, method="qda")
+modlda <- train(classe ~ ., data=training, method="lda")
+modnb  <- train(classe ~ ., data=training, method="nb")
+modrf  <- train(classe ~ ., data=training, method="rf")
+```
+
+
+# Cross validation
+
+Now for each of the models the expected predicion for the test data is calclulated:
+```{r predictTestdata, echo=FALSE, message=FALSE, warning=FALSE}
+pqda <- predict(modqda,newdata = testing)
+plda <- predict(modlda,newdata = testing)
+pnb  <- predict(modnb, newdata = testing)
+prf  <- predict(modrf, newdata = testing)
+```
+
+
+For each of the predictions the hit rate on the testing data indicating the 
+expected out of sample error is calulated: 
+
+```{r calcHitratesperModel}
+t1 <- table(pqda,testing$classe)
+cat( "hitrate Quadratic DiscriminatA: ", sum(diag(t1))/sum(t1)*100 , "% \n")
+t2 <- table(plda,testing$classe)
+cat( "hitrate Linear DiscriminatAn  : ", sum(diag(t2))/sum(t2)*100 , "% \n")
+t3 <- table(pnb,testing$classe)
+cat( "hitrate Bayes Net             : ", sum(diag(t3))/sum(t3)*100 , "% \n")
+t4 <- table(prf,testing$classe)
+cat( "hitrate RandomForest          : ", sum(diag(t4))/sum(t4)*100 , "% \n")
+```
+
+It turns out the RandomForest moedl by far achieves the highest hitrate. Hence 
+RandomForest is selected for the quizz and, indeed, it achieves 20/20 points. 
+Using the other models resulted only in 10/20.  
+
+# The code to print the resluts for the quizz is as follows:
+```{r printResultforQuizz}
+t <- read.csv(file = "pml-testing.csv")
+t <- subset(t, select=vars_used[2:length(vars_used)])
+arr <- c("A","B","C","D","E")
+for(i in 1:20){
+#plda <- predict(modlda,newdata = t[i,])
+#pqda <- predict(modqda,newdata = t[i,])
+#pnb  <- predict(modnb, newdata = t[i,])
+prf  <- predict(modrf, newdata = t[i,])
+cat (i,":",arr[prf],"\n ")
+}
+```
+
+
+
